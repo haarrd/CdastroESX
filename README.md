@@ -1,7 +1,8 @@
 import tkinter as tk
-from tkinter import ttk, messagebox, font
+from tkinter import ttk, messagebox, font, filedialog
 import sqlite3
 import os
+import pandas as pd
 
 # Configurando o caminho do banco de dados para a pasta raiz do Windows
 db_path = os.path.join(os.path.expanduser("~"), "cadastro.db")
@@ -23,7 +24,7 @@ def add(event=None):
     endereco = entrada_endereco.get().upper()
 
     if nome and prontuario and endereco:
-        if prontuario.isdigit() and 1000 <= int(prontuario) <= 1300:
+        if prontuario.isdigit() and 1 <= int(prontuario) <= 20300:  # Altere a faixa de prontuário
             try:
                 cursor.execute('INSERT INTO cadastro VALUES (?, ?, ?)', (nome, prontuario, endereco))
                 conn.commit()
@@ -35,7 +36,7 @@ def add(event=None):
             except sqlite3.IntegrityError:
                 messagebox.showerror("Erro", "Prontuário já existente!")
         else:
-            messagebox.showerror("Erro", "Prontuário inválido! (1000-10300)")
+            messagebox.showerror("Erro", "Prontuário inválido! (1-20300)")  # Altere a faixa de prontuário
     else:
         messagebox.showerror("Erro", "Preencha todos os campos!")
 
@@ -76,6 +77,52 @@ def delete():
     else:
         messagebox.showerror("Erro", "Nenhum cadastro selecionado!")
 
+def import_from_excel():
+    file_path = filedialog.askopenfilename(
+        title="Selecione o arquivo Excel",
+        filetypes=(("Arquivos Excel", "*.xlsx *.xls"), ("Todos os arquivos", "*.*"))
+    )
+    if file_path:
+        try:
+            # Leitura do arquivo Excel
+            df = pd.read_excel(file_path, engine='openpyxl')
+            
+            # Exibir os nomes das colunas para depuração
+            print(f"Colunas encontradas no arquivo Excel: {df.columns.tolist()}")
+            
+            # Remover espaços extras dos nomes das colunas
+            df.columns = df.columns.str.strip()
+            
+            # Exibir as colunas após remoção dos espaços extras para verificação
+            print(f"Colunas após strip: {df.columns.tolist()}")
+
+            # Verifica se as colunas necessárias existem no arquivo Excel
+            required_columns = ['nome', 'prontuario', 'endereco']
+            missing_columns = [col for col in required_columns if col not in df.columns]
+            
+            if missing_columns:
+                messagebox.showerror("Erro", f"O arquivo Excel está faltando as colunas: {', '.join(missing_columns)}")
+                return
+            
+            # Inserir dados no banco de dados
+            for _, row in df.iterrows():
+                nome = str(row['nome']).upper()
+                prontuario = str(row['prontuario']).strip()
+                endereco = str(row['endereco']).upper()
+                
+                if prontuario.isdigit() and 1 <= int(prontuario) <= 20300:  # Validação do prontuário
+                    try:
+                        cursor.execute('INSERT INTO cadastro VALUES (?, ?, ?)', (nome, prontuario, endereco))
+                    except sqlite3.IntegrityError:
+                        # Ignorar prontuários duplicados
+                        continue
+            
+            conn.commit()
+            messagebox.showinfo("Importação", "Dados importados com sucesso!")
+            update_table()
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao importar dados do Excel: {e}")
+
 # Criação da interface
 janela = tk.Tk()
 janela.title("Sistema de Cadastro")
@@ -107,7 +154,7 @@ label_nome.grid(row=0, column=0, sticky="w", padx=10, pady=5)
 entrada_nome = tk.Entry(janela, font=("Arial", 12), width=30)
 entrada_nome.grid(row=0, column=1, padx=10, pady=5, sticky="ew")
 
-label_prontuario = tk.Label(janela, text="Prontuário (1000-10300):", font=bold_font, anchor="w", bg="#ADD8E6")
+label_prontuario = tk.Label(janela, text="Prontuário (1-20300):", font=bold_font, anchor="w", bg="#ADD8E6")
 label_prontuario.grid(row=1, column=0, sticky="w", padx=10, pady=5)
 entrada_prontuario = tk.Entry(janela, font=("Arial", 12), width=30)
 entrada_prontuario.grid(row=1, column=1, padx=10, pady=5, sticky="ew")
@@ -140,15 +187,19 @@ search_button.pack(fill="x", pady=2)
 delete_button = tk.Button(button_frame, text="Deletar", command=delete, **button_style)
 delete_button.pack(fill="x", pady=2)
 
+import_button = tk.Button(button_frame, text="Importar do Excel", command=import_from_excel, **button_style)
+import_button.pack(fill="x", pady=2)
+
 # Tabela
 tree = ttk.Treeview(janela, columns=('nome', 'prontuario', 'endereco'), show='headings', height=10, selectmode="browse")
 tree.heading('nome', text='Nome', anchor="center")
 tree.heading('prontuario', text='Prontuário', anchor="center")
-tree.heading('endereco', text='Endereço', anchor="center")
+tree.heading('endereco', text='Endereço', anchor="w")  # Endereço alinhado à esquerda
 
 tree.column('nome', anchor="center")
 tree.column('prontuario', anchor="center")
-tree.column('endereco', anchor="center")
+tree.column('endereco', anchor="w")  # Endereço alinhado à esquerda
+
 tree.grid(row=4, column=1, rowspan=3, padx=10, pady=5, sticky="nsew")
 
 scrollbar = ttk.Scrollbar(janela, orient="vertical", command=tree.yview)
